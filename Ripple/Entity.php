@@ -10,6 +10,7 @@ use ReflectionProperty;
 use Ripple\Collection;
 use Ripple\Database;
 use Ripple\Relationships\ManyToMany;
+use Ripple\Relationships\ManyToOne;
 use Ripple\Relationships\OneToMany;
 
 abstract class Entity
@@ -153,6 +154,15 @@ abstract class Entity
         $foreign_key = is_null($foreign_key) ? $classname . '_id' : $foreign_key;
         return new OneToMany($this, $childClass, $foreign_key);
     }
+
+    public function belongsTo($parentClass, $foreign_key)
+    {
+        $class = new \ReflectionClass($this);
+        $classname = strtolower($class->getShortName());
+        $foreign_key = is_null($foreign_key) ? $classname . '_id' : $foreign_key;
+        return new ManyToOne($this, $parentClass, $foreign_key);
+    }
+
     /**
      * Many-to-many relationship
      * @param string $relatedClass Related Class
