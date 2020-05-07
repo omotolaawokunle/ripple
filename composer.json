@@ -1,0 +1,24 @@
+{
+  "name": "splashphp/ripple",
+  "type": "library",
+  "description": "ORM for splashphp framework",
+  "keywords": [
+    "splashphp",
+    "orm",
+    "splash",
+    "php"
+  ],
+  "homepage": "https://github.com/splashphp",
+  "license": "MIT",
+  "authors": [
+    {
+      "name": "Omotola Awokunle",
+      "email": "omotolaawokunle@gmail.com",
+      "homepage": "https://github.com/omotolaawokunle",
+      "role": "Developer"
+    }
+  ],
+  "require-dev": {
+    "phpunit/phpunit": "^9.1"
+  }
+}
