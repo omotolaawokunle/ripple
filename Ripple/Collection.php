@@ -2,7 +2,6 @@
 
 namespace Ripple;
 
-require_once('./autoload.php');
 
 use ArrayAccess;
 use ArrayIterator;
@@ -29,6 +28,25 @@ class Collection implements Countable, ArrayAccess, IteratorAggregate, JsonSeria
         return $this->items;
     }
 
+    public function take(int $number)
+    {
+        return array_slice($this->items, 0, $number);
+    }
+
+    public function paginate($limit, $pageType = "GET")
+    {
+        $pagination = new Paginator($limit, $pageType);
+        if ($this->count() > 0) {
+            $pagination->set_total($this->count());
+
+            $offset = $pagination->getOffset();
+            $response = new Collection(array_slice($this->items, $offset, $limit));
+            $response->links = $pagination->links();
+            return $response;
+        } else {
+            return $this;
+        }
+    }
 
     /**
      * Remove an item from the collection by key.
@@ -65,6 +83,55 @@ class Collection implements Countable, ArrayAccess, IteratorAggregate, JsonSeria
     public function sum()
     {
         return array_sum($this->items);
+    }
+
+    public function first()
+    {
+        return isset($this->items[0]) ? $this->items[0] : false;
+    }
+
+
+    public function flatten($depth = INF)
+    {
+        return new static(Helper::flatten($this->items, $depth));
+    }
+
+    public function shuffle()
+    {
+        shuffle($this->items);
+        return $this;
+    }
+
+    public function min()
+    {
+        return min($this->items);
+    }
+
+    public function max()
+    {
+        return max($this->items);
+    }
+
+
+
+    /**
+     * @param mixed $value
+     * @return $this
+     */
+    public function search($value)
+    {
+        $result = [];
+        $value = preg_quote($value, '~');
+        $data = collect($this->items)->flatten();
+        foreach ($this->items as $key => $item) {
+            $data = collect((array) $item)->flatten();
+            $res = preg_grep('~' . $value . '~', $data->all());
+            if (!empty($res)) {
+                $result[] = $this->items[$key];
+            }
+        }
+
+        return new static($result);
     }
 
     public function offsetExists($key)

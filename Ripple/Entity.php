@@ -3,32 +3,32 @@
 namespace Ripple;
 
 
-require_once('./autoload.php');
-
 use ArrayAccess;
 use ReflectionProperty;
 use Ripple\Collection;
-use Ripple\Database;
 use Ripple\Relationships\ManyToMany;
 use Ripple\Relationships\ManyToOne;
 use Ripple\Relationships\OneToMany;
+use Ripple\Database;
+use Ripple\Relationships\OneToOne;
 
 abstract class Entity
 {
     protected $table;
     private $db;
-    public $created_at;
+
 
     public function __construct()
     {
-        if ($this->db !== '') {
+        if (is_null($this->db)) {
             $this->db = new Database();
         }
         $this->loadClassProperties();
     }
 
     /**
-     * @return Entity
+     * 
+     * @return \ORM\Ripple\Collection
      */
     public function findAll()
     {
@@ -37,35 +37,117 @@ abstract class Entity
     }
 
     /**
-     * @param $id
-     * @return Entity
+     * 
+     * @return \ORM\Ripple\Collection
+     */
+    public static function all()
+    {
+        $class = new \ReflectionClass(get_called_class());
+        $entity = $class->newInstance();
+        $result = $entity->db->select($entity->table, '*', []);
+        return $entity->buildObject($result);
+    }
+
+    /**
+     * @param int $id
+     * @return $this
      */
     public function findById($id)
     {
         $result = $this->db->select($this->table, '*', ['id' => ['=', $id, '']]);
         $result = $this->buildObject($result);
-
-        if ($result) {
-            //return $result;
-            return $result[0];
+        if ($result->first()) {
+            return $result->first();
         }
-        return (object) [];
+        return false;
     }
+
+
+    /**
+     * @param array $conditions
+     * @return $this
+     */
+    public function find(array $conditions)
+    {
+        foreach ($conditions as $key => $value) {
+            $conditions[$key] = ['=', $value, ''];
+        }
+
+        $result = $this->db->select($this->table, '*', $conditions);
+        $result = $this->buildObject($result);
+
+        if ($result->first()) {
+            return $result;
+        }
+        return false;
+    }
+
+    /**
+     * @param string $field
+     * @param string $operator
+     * @param mixed $value
+     * 
+     * @return self
+     */
+
+    public static function where($field, $operator = '=', $value)
+    {
+        $class = new \ReflectionClass(get_called_class());
+        $entity = $class->newInstance();
+        $conditions = [];
+        $conditions[$field] = [$operator, $value, ''];
+
+        $result = $entity->db->select($entity->table, '*', $conditions);
+        $result = $entity->buildObject($result);
+
+        if ($result->first()) {
+            return $result;
+        }
+        return false;
+    }
+
+    /**
+     * @param string $term
+     * 
+     * @return self
+     */
+    public static function search($term)
+    {
+        $class = new \ReflectionClass(get_called_class());
+        $entity = $class->newInstance();
+        $fields = $entity->db->fetchFields($entity->db->buildQueryString($entity->table, 'select'));
+        $conditions = [];
+        foreach ($fields as $field) {
+            $conditions[$field] = [' LIKE ', '%' . $term . '%', ' OR '];
+        }
+
+        $result = $entity->db->select($entity->table, '*', $conditions);
+        $result = $entity->buildObject($result);
+
+        if ($result->first()) {
+            return $result;
+        }
+        return false;
+    }
+
+
 
     /**
      * @return mixed
      */
     public function save()
     {
-        $fields = $this->db->fetchFields($this->db->buildQueryString($this->table, 'select'));
+        $class = new \ReflectionClass(get_called_class());
+        $entity = $class->newInstance();
+        $fields = $entity->db->fetchFields($entity->db->buildQueryString($entity->table, 'select'));
         if (isset($this->id)) {
-            return $this->db->update($this->table, $fields, (array) $this, ['id' => ['=', $this->id, '']]);
+            return $entity->db->update($entity->table, $fields, (array) $this, ['id' => ['=', $this->id, '']]);
         }
-        return $this->db->insert($this->table, $fields, (array) $this);
+        return $entity->db->insert($entity->table, $fields, (array) $this);
     }
 
     /**
-     * @param $object
+     * @param array $object
      * @return Entity
      */
     public static function morph(array $object)
@@ -75,26 +157,19 @@ abstract class Entity
         foreach ($class->getProperties(\ReflectionProperty::IS_PROTECTED) as $prop) {
             unset($entity->{$prop->getName()});
         }
-        if ($entity->db) {
-            unset($entity->db);
-        }
+        unset($entity->db);
         foreach ($class->getProperties(\ReflectionProperty::IS_PUBLIC) as $prop) {
             if (isset($object[$prop->getName()])) {
                 $prop->setValue($entity, $object[$prop->getName()]);
             }
-            if (isset($object['created_at']) && !$class->hasProperty('created_at')) {
-                $property = $class->getProperty('created_at');
-                $property->setValue($entity, $object['created_at']);
-            }
         }
-        //$entity->initialize();
 
         return $entity;
     }
 
     /**
-     * @param $result
-     * @param $class Class of the parsed $result
+     * @param array|object $result
+     *
      * @return object
      */
     public function buildObject($result)
@@ -115,19 +190,62 @@ abstract class Entity
             }
         }
         return $this->collect($response);
-        //return json_decode(json_encode($response));
     }
 
+    /**
+     * @param array $response
+     * 
+     * @return \ORM\Ripple\Collection
+     */
     private function collect(array $response)
     {
         return new Collection($response);
     }
+
 
     public function getTable()
     {
         $class = new \ReflectionClass($this);
         $entity = $class->newInstance();
         return $entity->table;
+    }
+
+    public static function paginate($limit, $pageType = "GET")
+    {
+        $class = new \ReflectionClass(get_called_class());
+        $entity = $class->newInstance();
+        $all = $entity->findAll();
+        $pagination = new Paginator($limit, $pageType);
+        if ($all->count() > 0) {
+            $pagination->set_total($all->count());
+
+            $offset = $pagination->getOffset();
+            $result = $entity->db->select($entity->table, '*', [], $limit, $offset);
+            $response = $entity->buildObject($result);
+            $response->links = $pagination->links();
+            return $response;
+        } else {
+            return $all;
+        }
+    }
+
+    public static function simplePaginate($limit, $pageType = "GET")
+    {
+        $class = new \ReflectionClass(get_called_class());
+        $entity = $class->newInstance();
+        $all = $entity->findAll();
+        $pagination = new Paginator($limit, $pageType, true);
+        if ($all->count() > 0) {
+            $pagination->set_total($all->count());
+
+            $offset = $pagination->getOffset();
+            $result = $entity->db->select($entity->table, '*', [], $limit, $offset);
+            $response = $entity->buildObject($result);
+            $response->links = $pagination->links();
+            return $response;
+        } else {
+            return $all;
+        }
     }
 
 
@@ -173,5 +291,15 @@ abstract class Entity
     public function belongsToMany($relatedClass, $pivotTable, $parentKey, $relatedKey)
     {
         return new ManyToMany($this, $relatedClass, $pivotTable, $parentKey, $relatedKey);
+    }
+
+    /**
+     * One-to-one relationship
+     * @param string $relatedClass Related Class
+     * @param string $foreignKey foreign key in the child table
+     */
+    public function hasOne($relatedClass, $foreignKey)
+    {
+        return new OneToOne($this->id, $relatedClass, $foreignKey);
     }
 }

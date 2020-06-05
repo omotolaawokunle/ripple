@@ -2,16 +2,10 @@
 
 namespace Ripple\Relationships;
 
-require_once('./autoload.php');
 
-use ArrayAccess;
-use ArrayIterator;
-use Countable;
-use IteratorAggregate;
-use Ripple\Collection;
 use Ripple\Database;
 
-class ManyToOne implements ArrayAccess, IteratorAggregate
+class ManyToOne extends Relationship
 {
     private $parent;
     private $child;
@@ -38,7 +32,7 @@ class ManyToOne implements ArrayAccess, IteratorAggregate
             $response['fields'] = $db->fetchFields($result);
             $response['values'] = $result->fetch_all(MYSQLI_ASSOC);
         }
-        //print_r($response['values']);
+
         $classObj = $this->classify($response);
         return $classObj;
     }
@@ -66,7 +60,7 @@ class ManyToOne implements ArrayAccess, IteratorAggregate
             }
         }
         return $response;
-        //return json_decode(json_encode($response));
+        
     }
 
     private function morph(array $object)
@@ -77,13 +71,6 @@ class ManyToOne implements ArrayAccess, IteratorAggregate
         foreach ($class->getProperties(\ReflectionProperty::IS_PUBLIC) as $prop) {
             if (isset($object[$prop->getName()])) {
                 $prop->setValue($entity, $object[$prop->getName()]);
-            }
-            if (isset($object['created_at']) && !$class->hasProperty('created_at')) {
-                $property = $class->getProperty('created_at');
-                $property->setValue($entity, $object['created_at']);
-            }
-            if (isset($object['parent_id']) && !$class->hasProperty('parent')) {
-                $entity->parent = $this->child;
             }
         }
         return $entity;
@@ -116,34 +103,5 @@ class ManyToOne implements ArrayAccess, IteratorAggregate
     private function init_child_class()
     {
         return $this->parent->newInstance();
-    }
-
-    public function offsetExists($key)
-    {
-        return array_key_exists($key, $this->items);
-    }
-
-    public function offsetGet($key)
-    {
-        return $this->items[$key];
-    }
-
-    public function offsetSet($key, $value)
-    {
-        if (is_null($key)) {
-            $this->items[] = $value;
-        } else {
-            $this->items[$key] = $value;
-        }
-    }
-
-    public function offsetUnset($key)
-    {
-        unset($this->items[$key]);
-    }
-
-    public function getIterator()
-    {
-        return new ArrayIterator($this->items);
     }
 }

@@ -2,16 +2,9 @@
 
 namespace Ripple\Relationships;
 
-require_once('./autoload.php');
-
-use ArrayAccess;
-use ArrayIterator;
-use Countable;
-use IteratorAggregate;
-use Ripple\Collection;
 use Ripple\Database;
 
-class ManyToMany implements ArrayAccess, IteratorAggregate
+class ManyToMany extends Relationship
 {
     private $relatedClass;
     private $parent;
@@ -84,12 +77,31 @@ class ManyToMany implements ArrayAccess, IteratorAggregate
             if (isset($object[$prop->getName()])) {
                 $prop->setValue($entity, $object[$prop->getName()]);
             }
-            if (isset($object['created_at']) && !$class->hasProperty('created_at')) {
-                $property = $class->getProperty('created_at');
-                $property->setValue($entity, $object['created_at']);
+
+
+            $pivot = $this->getPivotObject();
+            foreach ($pivot as $key => $value) {
+                if (isset($object[$key])) {
+                    $pivot->{$key} = $object[$key];
+                }
             }
+            $entity->pivot = $pivot;
         }
         return $entity;
+    }
+
+    public function getPivotObject()
+    {
+        $db = new \Ripple\Database();
+        $string = $db->buildQueryString($this->pivotTable, 'select');
+        $pivotFields = $db->fetchFields($string);
+        $pivot = [];
+        foreach ($pivotFields as $field) {
+            if ($field !== 'id') {
+                $pivot[$field] = '';
+            }
+        }
+        return (object) json_decode(json_encode($pivot));
     }
 
 
@@ -103,7 +115,6 @@ class ManyToMany implements ArrayAccess, IteratorAggregate
         $parentId = $this->parent->id;
         $relatedTable = $this->relatedName;
 
-        /*$queryString = "SELECT * FROM $parentTable p INNER JOIN $relatedClassTable c ON c.$this->foreign_key = p.id AND c.post_id = $parentId";*/
         $queryString = "SELECT * FROM $parentTable AS p JOIN (SELECT * FROM $pivotTable AS j JOIN $relatedTable AS c ON j.$relatedKey=c.id) AS jc ON p.id=jc.$parentKey AND jc.$parentKey=$parentId";
         return $queryString;
     }
@@ -138,32 +149,46 @@ class ManyToMany implements ArrayAccess, IteratorAggregate
         return $parent->newInstance();
     }
 
-    public function offsetExists($key)
+    /**
+     * Create a new instance of the child class
+     */
+    public function attach($id, $params)
     {
-        return array_key_exists($key, $this->items);
+        return $this->add($this, $id, $params);
     }
 
-    public function offsetGet($key)
+    public function getChild()
     {
-        return $this->items[$key];
+        return isset($this->child) ? $this->child : false;
     }
 
-    public function offsetSet($key, $value)
+    public function getParent()
     {
-        if (is_null($key)) {
-            $this->items[] = $value;
-        } else {
-            $this->items[$key] = $value;
-        }
+        return isset($this->parent) ? $this->parent : false;
     }
 
-    public function offsetUnset($key)
+    public function relatedKey()
     {
-        unset($this->items[$key]);
+        return isset($this->relatedKey) ? $this->relatedKey : false;
     }
 
-    public function getIterator()
+    public function parentKey()
     {
-        return new ArrayIterator($this->items);
+        return isset($this->parentKey) ? $this->parentKey : false;
+    }
+
+    public function relatedClass()
+    {
+        return isset($this->relatedClass) ? $this->relatedClass : false;
+    }
+
+    public function foreignKey()
+    {
+        return isset($this->foreign_key) ? $this->foreign_key : false;
+    }
+
+    public function pivot()
+    {
+        return isset($this->pivotTable) ? $this->pivotTable : false;
     }
 }

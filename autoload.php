@@ -1,5 +1,6 @@
 <?php
 
+require_once('helpers.php');
 spl_autoload_register(function ($class_name) {
 
     $directories = array(

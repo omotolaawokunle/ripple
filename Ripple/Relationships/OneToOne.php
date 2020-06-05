@@ -5,16 +5,16 @@ namespace Ripple\Relationships;
 
 use Ripple\Database;
 
-class OneToMany extends Relationship
+class OneToOne extends Relationship
 {
     private $child;
     private $parent;
     private $foreign_key;
     protected $items;
 
-    public function __construct($parent, $child, $foreign_key)
+    public function __construct($parent_id, $child, $foreign_key)
     {
-        $this->parent = $parent;
+        $this->parent = $parent_id;
         $this->child = new \ReflectionClass($child);
         $this->foreign_key = $foreign_key;
         $this->items =  $this->getItems();
@@ -32,7 +32,7 @@ class OneToMany extends Relationship
             $response['fields'] = $db->fetchFields($result);
             $response['values'] = $result->fetch_all(MYSQLI_ASSOC);
         }
-
+        //print_r($response['values']);
         $classObj = $this->classify($response);
         return $classObj;
     }
@@ -86,28 +86,11 @@ class OneToMany extends Relationship
 
     private function buildString()
     {
-        $asString = $this->buildAsString();
-        $parentTable = $this->parent->getTable();
-        $parentId = $this->parent->id;
+        $parentId = $this->parent;
         $childTable = $this->init_child_class()->getTable();
 
-        $queryString = "SELECT $asString FROM $parentTable p INNER JOIN $childTable c ON c.$this->foreign_key = p.id AND c.$this->foreign_key = $parentId";
+        $queryString = "SELECT * FROM $childTable WHERE $this->foreign_key = $parentId";
         return $queryString;
-    }
-
-    private function buildAsString()
-    {
-        $childFields = $this->child->getProperties(\ReflectionProperty::IS_PUBLIC);
-        $asString = [];
-        foreach ($childFields as $field) {
-            $key = "c." . $field->getName();
-            $value = $field->getName();
-            $asString[] = $key . ' AS ' . $value;
-        }
-        $asString = implode(', ', $asString);
-        $asString .= ", p.id AS parent_id";
-
-        return $asString;
     }
 
     private function init_child_class()
