@@ -216,8 +216,9 @@ class Database
         return [];
     }
 
-    public function error($error)
+    public function error(string $error, int $code = 1)
     {
-        return new Exception($error, 1);
+        throw new Exception($error, $code);
+        exit;
     }
 }
