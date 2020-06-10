@@ -90,7 +90,11 @@ class Collection implements Countable, ArrayAccess, IteratorAggregate, JsonSeria
         return isset($this->items[0]) ? $this->items[0] : false;
     }
 
-
+    /**
+     * @param $depth
+     * 
+     * @return static
+     */
     public function flatten($depth = INF)
     {
         return new static(Helper::flatten($this->items, $depth));
@@ -116,7 +120,7 @@ class Collection implements Countable, ArrayAccess, IteratorAggregate, JsonSeria
 
     /**
      * @param mixed $value
-     * @return $this
+     * @return static
      */
     public function search($value)
     {
@@ -230,5 +234,21 @@ class Collection implements Countable, ArrayAccess, IteratorAggregate, JsonSeria
         $items = array_map($callback, $this->items, $keys);
 
         return new static(array_combine($keys, $items));
+    }
+
+    /**
+     * 
+     * @param string $key
+     * 
+     * @return $this
+     */
+
+    public function sort($key)
+    {
+        uasort($this->items, function ($a, $b) use (&$key) {
+            return $a[$key] <=> $b[$key];
+        });
+
+        return $this;
     }
 }
