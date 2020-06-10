@@ -133,28 +133,48 @@ abstract class Relationship implements ArrayAccess, IteratorAggregate
 
     public function sort($element, $type)
     {
-        switch ($type) {
-            case 'date_compare':
-                usort($this->items, function ($elem1, $elem2) use ($element) {
-                    $date1 = strtotime($elem1->{$element});
-                    $date2 = strtotime($elem2->{$element});
+        usort($this->items, function ($elem1, $elem2) use ($element, $type) {
+            switch ($type) {
+                case 'date_compare':
+                    if (is_object($elem1)) {
+                        $date1 = strtotime($elem1->{$element});
+                    } else if (is_array($elem1)) {
+                        $date1 = strtotime($elem1[$element]);
+                    }
+                    if (is_object($elem2)) {
+                        $date2 = strtotime($elem2->{$element});
+                    } else if (is_array($elem2)) {
+                        $date2 = strtotime($elem2[$element]);
+                    }
                     return $date2 - $date1;
-                });
-                break;
+                    break;
+                default:
+                    usort($this->items, function ($elem1, $elem2) use ($element) {
+                        if (is_object($elem1)) {
+                            $elem1 = $elem1->{$element};
+                        } else if (is_array($elem1)) {
+                            $elem1 = $elem1[$element];
+                        }
+                        if (is_object($elem2)) {
+                            $elem2 = $elem2->{$element};
+                        } else if (is_array($elem2)) {
+                            $elem2 = $elem2[$element];
+                        }
+                        return $elem2 <=> $elem1;
+                    });
+                    break;
+            }
+        });
 
-            default:
-                usort($this->items, function ($elem1, $elem2) use ($element) {
-                    return $elem2 - $elem1;
-                });
-                break;
-        }
+
         return $this;
     }
 
     public function find($value, $column)
     {
-        $key = array_search($value, array_column($this->items, $column));
-        return $this->items[$key];
+        $items = $this->items;
+        $key = array_search($value, array_column($items, $column));
+        return $key || $key === 0 ? $this->items[$key] : false;
     }
 
     /**
@@ -177,7 +197,7 @@ abstract class Relationship implements ArrayAccess, IteratorAggregate
 
     /**
      * 
-     * @return \ORM\Ripple\Collection
+     * @return Ripple\Collection
      */
     public function search($value)
     {
