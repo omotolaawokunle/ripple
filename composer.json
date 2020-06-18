@@ -20,5 +20,8 @@
   ],
   "require-dev": {
     "phpunit/phpunit": "^9.1"
+  },
+  "require": {
+    "clancats/hydrahon": "^1.1"
   }
 }

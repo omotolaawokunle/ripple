@@ -6,16 +6,21 @@ namespace Ripple;
 use ArrayAccess;
 use ReflectionProperty;
 use Ripple\Collection;
-use Ripple\Relationships\ManyToMany;
-use Ripple\Relationships\ManyToOne;
-use Ripple\Relationships\OneToMany;
 use Ripple\Database;
-use Ripple\Relationships\OneToOne;
+use Ripple\QueryBuilder\DB;
+use Ripple\Traits\HasRelationship;
 
 abstract class Entity
 {
+    use HasRelationship;
+
     protected $table;
-    private $db;
+    protected static $traitInitializers = [];
+    protected $primaryKey = 'id';
+    protected $keyType = 'int';
+    protected $db;
+    const DELETED_AT = 'deleted_at';
+    const CREATED_AT = 'created_at';
 
 
     public function __construct()
@@ -24,6 +29,49 @@ abstract class Entity
             $this->db = new Database();
         }
         $this->loadClassProperties();
+        $this->boot();
+        $this->initializeTraits();
+    }
+
+    protected function boot()
+    {
+        static::bootTraits();
+    }
+
+    protected function newQueryBuilder()
+    {
+        return new DB($this->table);
+    }
+
+    protected static function bootTraits()
+    {
+        $class = static::class;
+        $booted = [];
+
+        static::$traitInitializers[$class] = [];
+        foreach (class_uses($class) as $trait) {
+            $method = 'boot' . class_basename($trait);
+
+            if (method_exists($class, $method) && !in_array($method, $booted)) {
+                forward_static_call([$class, $method]);
+                $booted[] = $method;
+            }
+
+            if (method_exists($class, $method = 'initialize' . class_basename($trait))) {
+                static::$traitInitializers[$class][] = $method;
+
+                static::$traitInitializers[$class] = array_unique(
+                    static::$traitInitializers[$class]
+                );
+            }
+        }
+    }
+
+    protected function initializeTraits()
+    {
+        foreach (static::$traitInitializers[static::class] as $method) {
+            $this->{$method}();
+        }
     }
 
     /**
@@ -33,6 +81,7 @@ abstract class Entity
     public function findAll()
     {
         $result = $this->db->select($this->table, '*', []);
+        $result = $this->traitsFunctions($result);
         return $this->buildObject($result);
     }
 
@@ -42,10 +91,33 @@ abstract class Entity
      */
     public static function all()
     {
-        $class = new \ReflectionClass(get_called_class());
-        $entity = $class->newInstance();
-        $result = $entity->db->select($entity->table, '*', []);
-        return $entity->buildObject($result);
+        $entity = new static;
+        //$result = $entity->db->select($entity->table, '*', []);
+        $result = $entity->newQueryBuilder()->select()->get();
+        //$result = $entity->traitsFunctions($result);
+        $result = $entity->buildArray($result);
+
+        return $result;
+    }
+
+    private function buildArray($result)
+    {
+        $response = [];
+        if ($result) {
+            $fields = !empty($result) ? array_keys($result[0]) : [];
+            $values = $result;
+            $num_of_rows = count($values);
+            $num_of_fields = count($fields);
+            $buildResponse = [];
+
+            for ($i = 0; $i < $num_of_rows; $i++) {
+                for ($j = 0; $j < $num_of_fields; $j++) {
+                    $buildResponse[$fields[$j]] = $values[$i][$fields[$j]];
+                }
+                $response[] = $this->morph($buildResponse);
+            }
+        }
+        return $this->collect($response);
     }
 
     /**
@@ -55,6 +127,7 @@ abstract class Entity
     public function findById($id)
     {
         $result = $this->db->select($this->table, '*', ['id' => ['=', $id, '']]);
+        $result = $this->traitsFunctions($result);
         $result = $this->buildObject($result);
         if ($result->first()) {
             return $result->first();
@@ -62,10 +135,49 @@ abstract class Entity
         return false;
     }
 
+    protected function traitsFunctions($result)
+    {
+        return $result;
+    }
+
+    public function removeAttribute($key)
+    {
+        unset($this->$key);
+    }
+
+    public function getKeyName()
+    {
+        return $this->primaryKey;
+    }
+
+    public function setKeyName($key)
+    {
+        $this->primaryKey = $key;
+
+        return $this;
+    }
+
+    public function getKeyType()
+    {
+        return $this->keyType;
+    }
+
+    public function getForeignKey()
+    {
+        return class_basename($this) . '_' . $this->getKeyName();
+    }
+
+    public function setKeyType($type)
+    {
+        $this->keyType = $type;
+
+        return $this;
+    }
+
 
     /**
      * @param array $conditions
-     * @return $this
+     * @return Collection $result
      */
     public function find(array $conditions)
     {
@@ -74,20 +186,58 @@ abstract class Entity
         }
 
         $result = $this->db->select($this->table, '*', $conditions);
+        $result = $this->traitsFunctions($result);
         $result = $this->buildObject($result);
-
         if ($result->first()) {
             return $result;
         }
         return false;
     }
 
+    public function delete()
+    {
+        $this->performDelete();
+        return true;
+    }
+
+    public function forceDelete()
+    {
+        return $this->delete();
+    }
+
+
+    protected function performDelete()
+    {
+        return $this->db->delete($this->table, ['id' => ['=', $this->id], '']);
+    }
+
+    public static function destroy($ids)
+    {
+        $count = 0;
+
+        if ($ids instanceof Collection) {
+            $ids = $ids->all();
+        }
+
+        $ids = is_array($ids) ? $ids : func_get_args();
+        $instance = new static;
+        foreach ($ids as $id) {
+            $model = $instance->findById($id);
+            if ($model->delete()) {
+                $count++;
+            }
+        }
+
+        return $count;
+    }
+
+
     /**
      * @param string $field
      * @param string $operator
      * @param mixed $value
      * 
-     * @return self
+     * @return Collection
      */
 
     public static function where($field, $operator = '=', $value)
@@ -98,8 +248,8 @@ abstract class Entity
         $conditions[$field] = [$operator, $value, ''];
 
         $result = $entity->db->select($entity->table, '*', $conditions);
-        $result = $entity->buildObject($result);
-
+        $result = ($instance = new static)->traitsFunctions($result);
+        $result = $instance->buildObject($result);
         if ($result->first()) {
             return $result;
         }
@@ -122,8 +272,8 @@ abstract class Entity
         }
 
         $result = $entity->db->select($entity->table, '*', $conditions);
+        $result = ($instance = new static)->traitsFunctions($result);
         $result = $entity->buildObject($result);
-
         if ($result->first()) {
             return $result;
         }
@@ -152,18 +302,9 @@ abstract class Entity
      */
     public static function morph(array $object)
     {
-        $class = new \ReflectionClass(get_called_class());
-        $entity = $class->newInstance();
-        foreach ($class->getProperties(\ReflectionProperty::IS_PROTECTED) as $prop) {
-            unset($entity->{$prop->getName()});
-        }
-        unset($entity->db);
-        foreach ($class->getProperties(\ReflectionProperty::IS_PUBLIC) as $prop) {
-            if (isset($object[$prop->getName()])) {
-                $prop->setValue($entity, $object[$prop->getName()]);
-            }
-        }
-
+        $class = get_called_class();
+        $morpher = new Morpher;
+        $entity = $morpher($class, $object);
         return $entity;
     }
 
@@ -214,7 +355,7 @@ abstract class Entity
     {
         $class = new \ReflectionClass(get_called_class());
         $entity = $class->newInstance();
-        $all = $entity->findAll();
+        $all = static::all();
         $pagination = new Paginator($limit, $pageType);
         if ($all->count() > 0) {
             $pagination->set_total($all->count());
@@ -233,7 +374,7 @@ abstract class Entity
     {
         $class = new \ReflectionClass(get_called_class());
         $entity = $class->newInstance();
-        $all = $entity->findAll();
+        $all = static::all();
         $pagination = new Paginator($limit, $pageType, true);
         if ($all->count() > 0) {
             $pagination->set_total($all->count());
@@ -265,41 +406,15 @@ abstract class Entity
         }
     }
 
-    public function hasMany($childClass, $foreign_key = null)
-    {
-        $class = new \ReflectionClass($this);
-        $classname = strtolower($class->getShortName());
-        $foreign_key = is_null($foreign_key) ? $classname . '_id' : $foreign_key;
-        return new OneToMany($this, $childClass, $foreign_key);
-    }
 
-    public function belongsTo($parentClass, $foreign_key)
+    private function checkTraits($trait)
     {
-        $class = new \ReflectionClass($this);
-        $classname = strtolower($class->getShortName());
-        $foreign_key = is_null($foreign_key) ? $classname . '_id' : $foreign_key;
-        return new ManyToOne($this, $parentClass, $foreign_key);
-    }
+        $traits = class_uses(static::class);
+        $traits = collect($traits)->map(function ($value) {
+            $value = new \ReflectionClass($value);
+            return $value->getShortName();
+        });
 
-    /**
-     * Many-to-many relationship
-     * @param string $relatedClass Related Class
-     * @param string $pivotTable Pivot table
-     * @param string $parentKey Parent Key in the pivot table
-     * @param string $relatedKey Related key in the pivot table
-     */
-    public function belongsToMany($relatedClass, $pivotTable, $parentKey, $relatedKey)
-    {
-        return new ManyToMany($this, $relatedClass, $pivotTable, $parentKey, $relatedKey);
-    }
-
-    /**
-     * One-to-one relationship
-     * @param string $relatedClass Related Class
-     * @param string $foreignKey foreign key in the child table
-     */
-    public function hasOne($relatedClass, $foreignKey)
-    {
-        return new OneToOne($this->id, $relatedClass, $foreignKey);
+        return $traits->contains($trait);
     }
 }

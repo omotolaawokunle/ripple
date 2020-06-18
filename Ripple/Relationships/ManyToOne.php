@@ -4,6 +4,7 @@ namespace Ripple\Relationships;
 
 
 use Ripple\Database;
+use Ripple\Morpher;
 
 class ManyToOne extends Relationship
 {
@@ -60,19 +61,13 @@ class ManyToOne extends Relationship
             }
         }
         return $response;
-        
     }
 
     private function morph(array $object)
     {
-        $class = $this->parent;
-        $entity = $class->newInstanceWithoutConstructor();
-
-        foreach ($class->getProperties(\ReflectionProperty::IS_PUBLIC) as $prop) {
-            if (isset($object[$prop->getName()])) {
-                $prop->setValue($entity, $object[$prop->getName()]);
-            }
-        }
+        $class = $this->parent->getName();
+        $morpher = new Morpher;
+        $entity = $morpher($class, $object);
         return $entity;
     }
 

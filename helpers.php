@@ -15,7 +15,7 @@ function takeRandom($string, $length = 10)
 {
     $array = str_split(md5($string));
     $newString = collect($array)->take($length);
-    $newString = implode('', $newString);
+    $newString = implode('', $newString->all());
     return $newString;
 }
 
@@ -49,4 +49,10 @@ function getFullUrl($queryStr = false)
     $scheme = (isHttpSecure()) ? "https://" : "http://";
     $fullUrl = $scheme . $host . $uri;
     return $fullUrl = ($queryStr) ? $fullUrl . $queryString : $fullUrl;
+}
+
+function class_basename($class)
+{
+    $helper = new Ripple\Helper();
+    return $helper->class_basename($class);
 }

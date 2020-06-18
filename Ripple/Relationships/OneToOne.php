@@ -4,6 +4,7 @@ namespace Ripple\Relationships;
 
 
 use Ripple\Database;
+use Ripple\Morpher;
 
 class OneToOne extends Relationship
 {
@@ -65,21 +66,9 @@ class OneToOne extends Relationship
 
     private function morph(array $object)
     {
-        $class = $this->child;
-        $entity = $class->newInstanceWithoutConstructor();
-
-        foreach ($class->getProperties(\ReflectionProperty::IS_PUBLIC) as $prop) {
-            if (isset($object[$prop->getName()])) {
-                $prop->setValue($entity, $object[$prop->getName()]);
-            }
-            if (isset($object['created_at']) && !$class->hasProperty('created_at')) {
-                $property = $class->getProperty('created_at');
-                $property->setValue($entity, $object['created_at']);
-            }
-            if (isset($object['parent_id']) && !$class->hasProperty('parent')) {
-                $entity->parent = $this->parent;
-            }
-        }
+        $class = $this->child->getName();
+        $morpher = new Morpher;
+        $entity = $morpher($class, $object);
         return $entity;
     }
 
@@ -140,5 +129,4 @@ class OneToOne extends Relationship
     {
         return isset($this->pivotTable) ? $this->pivotTable : false;
     }
-
 }

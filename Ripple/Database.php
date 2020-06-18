@@ -14,7 +14,7 @@ class Database
 
     public function __construct()
     {
-        $this->db = new \mysqli('localhost', 'root', 'base', 'test');
+        $this->db = new \mysqli('localhost', 'root', 'base', 'blog');
         if ($this->db->connect_error) {
             $this->error('Failed to connect to database - ' . $this->db->connect_error);
         }
@@ -146,6 +146,9 @@ class Database
             $query .= " LIMIT $limit OFFSET $offset";
         }
         $result = $this->db->query($query);
+        if ($this->db->error) {
+            $this->error($this->db->error, 1);
+        }
         $response = [];
         if ($result) {
             $response['fields'] = $this->fetchFields($result);
@@ -177,8 +180,12 @@ class Database
 
         foreach ($keys as $key => $value) {
             if (!isset($values[$value]) || is_null($values[$value])) {
-                unset($keys[$key]);
-                unset($values[$value]);
+                if ($value !== 'deleted_at') {
+                    unset($keys[$key]);
+                    unset($values[$value]);
+                } else {
+                    $values[$value] = NULL;
+                }
             }
         }
         $buildString =  '';
@@ -186,9 +193,17 @@ class Database
         $i = 0;
         foreach ($keys as $key) {
             if ($i !== $len - 1) {
-                $buildString .= $key . "='" . $values[$key] . "',";
+                if (is_null($values[$key])) {
+                    $buildString .= $key . "= NULL" . ",";
+                } else {
+                    $buildString .= $key . "='" . $values[$key] . "',";
+                }
             } else {
-                $buildString .= $key . "='" . $values[$key] . "'";
+                if (is_null($values[$key])) {
+                    $buildString .= $key . "= NULL";
+                } else {
+                    $buildString .= $key . "='" . $values[$key] . "'";
+                }
             }
             $i++;
         }
@@ -257,6 +272,9 @@ class Database
         if ($queryResult) {
             if (is_string($queryResult)) {
                 $queryResult = $this->db->query($queryResult);
+                if ($this->db->error) {
+                    $this->error($this->db->error);
+                }
             }
             $fieldsData = $queryResult->fetch_fields();
             $fields = [];

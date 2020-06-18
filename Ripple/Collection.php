@@ -150,6 +150,14 @@ class Collection implements Countable, ArrayAccess, IteratorAggregate, JsonSeria
         return $this;
     }
 
+    public function contains($value)
+    {
+        if (in_array($value, $this->items)) {
+            return true;
+        }
+        return false;
+    }
+
 
     /**
      * @param mixed $value
@@ -267,5 +275,19 @@ class Collection implements Countable, ArrayAccess, IteratorAggregate, JsonSeria
         $items = array_map($callback, $this->items, $keys);
 
         return new static(array_combine($keys, $items));
+    }
+
+    /**
+     * Run a filter over each of the items
+     * 
+     * @param callable $callback
+     * @param int $flag
+     * 
+     * @return static
+     */
+    public function filter(callable $callback, int $flag = 0)
+    {
+        $items = array_filter($this->items, $callback, $flag);
+        return new static($items);
     }
 }

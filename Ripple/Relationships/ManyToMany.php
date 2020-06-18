@@ -3,6 +3,7 @@
 namespace Ripple\Relationships;
 
 use Ripple\Database;
+use Ripple\Morpher;
 
 class ManyToMany extends Relationship
 {
@@ -71,22 +72,15 @@ class ManyToMany extends Relationship
     private function morph(array $object)
     {
         $class = $this->relatedClass;
-        $entity = $class->newInstanceWithoutConstructor();
-
-        foreach ($class->getProperties(\ReflectionProperty::IS_PUBLIC) as $prop) {
-            if (isset($object[$prop->getName()])) {
-                $prop->setValue($entity, $object[$prop->getName()]);
+        $morpher = new Morpher;
+        $entity = $morpher($class->getName(), $object);
+        $pivot = $this->getPivotObject();
+        foreach ($pivot as $key => $value) {
+            if (isset($object[$key])) {
+                $pivot->{$key} = $object[$key];
             }
-
-
-            $pivot = $this->getPivotObject();
-            foreach ($pivot as $key => $value) {
-                if (isset($object[$key])) {
-                    $pivot->{$key} = $object[$key];
-                }
-            }
-            $entity->pivot = $pivot;
         }
+        $entity->pivot = $pivot;
         return $entity;
     }
 
